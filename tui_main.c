@@ -2168,12 +2168,13 @@ static void push_about_msg(void) {
   wmove(w, tpad + rows + sep, footer_left_pad);
   waddstr(w, footer);
 }
-static void push_controls_msg(void) {
+
+static void push_controls_msg_mode(char mode) {
   struct Ctrl_item {
     char const *input;
     char const *desc;
   };
-  static struct Ctrl_item items[] = {
+  static struct Ctrl_item items_insert[] = {
       {"Ctrl+Q", "Quit"},
       {"Arrow Keys", "Move Cursor"},
       {"Ctrl+D or F1", "Open Main Menu"},
@@ -2198,6 +2199,63 @@ static void push_controls_msg(void) {
       {"< and >", "Adjust BPM"},
       {"?", "Controls (this message)"},
   };
+  static struct Ctrl_item items_normal[] = {
+      {"Ctrl+Q", "Quit"},
+      {"h j k l", "Move Cursor"},
+      {"H J K L", "Move Cursor One Block"},
+      {"w or e", "Move Cursor Forward Horizontally One Block"},
+      {"b", "Move Cursor Bckwards Horizontally One Block"},
+      {"Ctrl+D or F1", "Open Main Menu"},
+      {"i", "Enter Insert Mode"},
+      {"v", "Enter Visual Mode (Rectangle Selection Mode/Adjust Rectangle Selection)"},
+      {"R", "Enter Replace Mode (Append/Overwrite Mode)"},
+      {"r", "Replace Single"},
+      {"Spacebar", "Play/Pause"},
+      {"u", "Undo"},
+      {"d or x", "Cut"},
+      {"y", "Copy"},
+      {"p", "Paste"},
+      {"Ctrl+S", "Save"},
+      {"Ctrl+F", "Frame Step Forward"},
+      {"Ctrl+R", "Reset Frame Number"},
+      // {"/", "Key Trigger Mode"},
+      {"` (grave) or ~", "Slide Selection Mode"},
+      {"Escape", "Return to Normal Mode or Deselect"},
+      /*{"( ) _ + [ ] { }", "Adjust Grid Size and Rulers"},*/
+      {"< and >", "Adjust BPM"},
+      {"?", "Controls (this message)"},
+  };
+  static struct Ctrl_item items[] = {
+      {"Ctrl+Q", "Quit"},
+      {"h j k l", "Move Cursor"},
+      {"H J K L", "Move Cursor One Block"},
+      {"w or e", "Move Cursor Forward Horizontally One Block"},
+      {"b", "Move Cursor Bckwards Horizontally One Block"},
+      {"Ctrl+D or F1", "Open Main Menu"},
+      {"i", "Enter Insert Mode"},
+      {"v", "Enter Visual Mode (Rectangle Selection Mode/Adjust Rectangle Selection)"},
+      {"R", "Enter Replace Mode (Append/Overwrite Mode)"},
+      {"r", "Replace Single"},
+      {"Spacebar", "Play/Pause"},
+      {"u", "Undo"},
+      {"d or x", "Cut"},
+      {"y", "Copy"},
+      {"p", "Paste"},
+      {"Ctrl+S", "Save"},
+      {"Ctrl+F", "Frame Step Forward"},
+      {"Ctrl+R", "Reset Frame Number"},
+      // {"/", "Key Trigger Mode"},
+      {"` (grave) or ~", "Slide Selection Mode"},
+      {"Escape", "Return to Normal Mode or Deselect"},
+      /*{"( ) _ + [ ] { }", "Adjust Grid Size and Rulers"},*/
+      {"< and >", "Adjust BPM"},
+      {"?", "Controls (this message)"},
+  };
+  if (mode == 'i') {
+    memcpy(items,items_insert, sizeof(items_insert));
+  } else {
+    memcpy(items,items_normal, sizeof(items_normal));
+  }
   int w_input = 0;
   int w_desc = 0;
   for (Usz i = 0; i < ORCA_ARRAY_COUNTOF(items); ++i) {
@@ -2231,6 +2289,8 @@ static void push_controls_msg(void) {
     }
   }
 }
+char mode = 'n'; // set initial mode to normal
+static void push_controls_msg(void) { push_controls_msg_mode(mode); }
 static void push_opers_guide_msg(void) {
   struct Guide_item {
     char glyph;
@@ -3449,6 +3509,10 @@ int main(int argc, char **argv) {
   ged_send_osc_bpm(&t.ged, (I32)t.ged.bpm); // Send initial BPM
   ged_set_playing(&t.ged, true);            // Auto-play
   // Enter main loop. Process events as they arrive.
+
+mode = 'n'; // set initial mode to normal
+bool single_replace = false;
+bool after_replace = false;
 event_loop:;
   int key = wgetch(stdscr);
   if (cur_timeout != 0) {
@@ -3608,246 +3672,408 @@ event_loop:;
     goto event_loop;
   }
 
+
+  if (single_replace){
+    single_replace = false;
+    after_replace = true;
+    mode = 'i';
+  } else if (after_replace){
+    after_replace = false;
+    mode = 'n';
+  }
   // Regular inputs when we're not in a menu and not in bracketed paste.
-  switch (key) {
-  // Checking again for 'quit' here, because it's only listened for if we're
-  // in the menus or *not* in bracketed paste mode.
-  case CTRL_PLUS('q'):
-    goto quit;
-  case CTRL_PLUS('o'):
-    push_open_form(osoc(t.file_name));
-    break;
-  case 127: // backspace in terminal.app, apparently
-  case KEY_BACKSPACE:
-    if (t.ged.input_mode == Ged_input_mode_append) {
-      ged_dir_input(&t.ged, Ged_dir_left, 1);
-      ged_input_character(&t.ged, '.');
-      ged_dir_input(&t.ged, Ged_dir_left, 1);
-    } else {
-      ged_input_character(&t.ged, '.');
-    }
-    break;
-  case CTRL_PLUS('z'):
-  case CTRL_PLUS('u'):
-    ged_input_cmd(&t.ged, Ged_input_cmd_undo);
-    break;
-  case CTRL_PLUS('r'):
-    t.ged.tick_num = 0;
-    t.ged.needs_remarking = true;
-    t.ged.is_draw_dirty = true;
-    break;
-  case '[':
-    ged_adjust_rulers_relative(&t.ged, 0, -1);
-    break;
-  case ']':
-    ged_adjust_rulers_relative(&t.ged, 0, 1);
-    break;
-  case '{':
-    ged_adjust_rulers_relative(&t.ged, -1, 0);
-    break;
-  case '}':
-    ged_adjust_rulers_relative(&t.ged, 1, 0);
-    break;
-  case '(':
-    ged_resize_grid_relative(&t.ged, 0, -1);
-    break;
-  case ')':
-    ged_resize_grid_relative(&t.ged, 0, 1);
-    break;
-  case '_':
-    ged_resize_grid_relative(&t.ged, -1, 0);
-    break;
-  case '+':
-    ged_resize_grid_relative(&t.ged, 1, 0);
-    break;
-  case '\r':
-  case KEY_ENTER:
-    break; // Currently unused.
-  case CTRL_PLUS('i'):
-  case KEY_IC:
-    ged_input_cmd(&t.ged, Ged_input_cmd_toggle_append_mode);
-    break;
-  case '/':
-    // Formerly 'piano'/trigger mode toggle. We're repurposing it here to
-    // input a '?' instead of a '/' because '?' opens the help guide, and it
-    // might be a bad idea to take that away, since orca will take over the
-    // TTY and may leave users confused. I know of at least 1 person who was
-    // saved by pressing '?' after they didn't know what to do. Hmm.
-    ged_input_character(&t.ged, '?');
-    break;
-  case '<':
-    ged_adjust_bpm(&t.ged, -1);
-    break;
-  case '>':
-    ged_adjust_bpm(&t.ged, 1);
-    break;
-  case CTRL_PLUS('f'):
-    ged_input_cmd(&t.ged, Ged_input_cmd_step_forward);
-    break;
-  case CTRL_PLUS('e'):
-    ged_input_cmd(&t.ged, Ged_input_cmd_toggle_show_event_list);
-    break;
-  case CTRL_PLUS('x'):
-    ged_input_cmd(&t.ged, Ged_input_cmd_cut);
-    try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
-    break;
-  case CTRL_PLUS('c'):
-    ged_input_cmd(&t.ged, Ged_input_cmd_copy);
-    try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
-    break;
-  case CTRL_PLUS('v'):
-    if (t.use_gui_cboard) {
-      bool added_hist =
-          undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
-      Usz pasted_h, pasted_w;
-      Cboard_error cberr = cboard_paste(
-          t.ged.field.buffer, t.ged.field.height, t.ged.field.width,
-          t.ged.ged_cursor.y, t.ged.ged_cursor.x, &pasted_h, &pasted_w);
-      if (cberr) {
-        if (added_hist)
-          undo_history_pop(&t.ged.undo_hist, &t.ged.field, &t.ged.tick_num);
-        t.use_gui_cboard = false;
-        ged_input_cmd(&t.ged, Ged_input_cmd_paste);
+  if(mode == 'i'){ // insert mode
+    switch (key) {
+    // Checking again for 'quit' here, because it's only listened for if we're
+    // in the menus or *not* in bracketed paste mode.
+    case CTRL_PLUS('q'):
+      goto quit;
+    case CTRL_PLUS('o'):
+      push_open_form(osoc(t.file_name));
+      break;
+    case 127: // backspace in terminal.app, apparently
+    case KEY_BACKSPACE:
+      if (t.ged.input_mode == Ged_input_mode_append) {
+        ged_dir_input(&t.ged, Ged_dir_left, 1);
+        ged_input_character(&t.ged, '.');
+        ged_dir_input(&t.ged, Ged_dir_left, 1);
       } else {
-        if (pasted_h > 0 && pasted_w > 0) {
-          t.ged.ged_cursor.h = pasted_h;
-          t.ged.ged_cursor.w = pasted_w;
-        }
+        ged_input_character(&t.ged, '.');
       }
+      break;
+    case CTRL_PLUS('z'):
+    case CTRL_PLUS('u'):
+      ged_input_cmd(&t.ged, Ged_input_cmd_undo);
+      break;
+    case CTRL_PLUS('r'):
+      t.ged.tick_num = 0;
       t.ged.needs_remarking = true;
       t.ged.is_draw_dirty = true;
-    } else {
-      ged_input_cmd(&t.ged, Ged_input_cmd_paste);
-    }
-    break;
-  case '\'':
-    ged_input_cmd(&t.ged, Ged_input_cmd_toggle_selresize_mode);
-    break;
-  case '`':
-  case '~':
-    ged_input_cmd(&t.ged, Ged_input_cmd_toggle_slide_mode);
-    break;
-  case ' ':
-    if (t.ged.input_mode == Ged_input_mode_append)
+      break;
+    case '[':
+      ged_adjust_rulers_relative(&t.ged, 0, -1);
+      break;
+    case ']':
+      ged_adjust_rulers_relative(&t.ged, 0, 1);
+      break;
+    case '{':
+      ged_adjust_rulers_relative(&t.ged, -1, 0);
+      break;
+    case '}':
+      ged_adjust_rulers_relative(&t.ged, 1, 0);
+      break;
+    case '(':
+      ged_resize_grid_relative(&t.ged, 0, -1);
+      break;
+    case ')':
+      ged_resize_grid_relative(&t.ged, 0, 1);
+      break;
+    case '_':
+      ged_resize_grid_relative(&t.ged, -1, 0);
+      break;
+    case '+':
+      ged_resize_grid_relative(&t.ged, 1, 0);
+      break;
+    case '\r':
+    case KEY_ENTER:
+      break; // Currently unused.
+    case CTRL_PLUS('i'):
+    case KEY_IC:
+      ged_input_cmd(&t.ged, Ged_input_cmd_toggle_append_mode);
+      break;
+    case '/':
+      // Formerly 'piano'/trigger mode toggle. We're repurposing it here to
+      // input a '?' instead of a '/' because '?' opens the help guide, and it
+      // might be a bad idea to take that away, since orca will take over the
+      // TTY and may leave users confused. I know of at least 1 person who was
+      // saved by pressing '?' after they didn't know what to do. Hmm.
+      ged_input_character(&t.ged, '?');
+      break;
+    case '<':
+      ged_adjust_bpm(&t.ged, -1);
+      break;
+    case '>':
+      ged_adjust_bpm(&t.ged, 1);
+      break;
+    case CTRL_PLUS('f'):
+      ged_input_cmd(&t.ged, Ged_input_cmd_step_forward);
+      break;
+    case CTRL_PLUS('e'):
+      ged_input_cmd(&t.ged, Ged_input_cmd_toggle_show_event_list);
+      break;
+    case CTRL_PLUS('x'):
+      ged_input_cmd(&t.ged, Ged_input_cmd_cut);
+      try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
+      break;
+    case CTRL_PLUS('c'):
+      ged_input_cmd(&t.ged, Ged_input_cmd_copy);
+      try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
+      break;
+    case CTRL_PLUS('v'):
+      if (t.use_gui_cboard) {
+        bool added_hist =
+            undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
+        Usz pasted_h, pasted_w;
+        Cboard_error cberr = cboard_paste(
+            t.ged.field.buffer, t.ged.field.height, t.ged.field.width,
+            t.ged.ged_cursor.y, t.ged.ged_cursor.x, &pasted_h, &pasted_w);
+        if (cberr) {
+          if (added_hist)
+            undo_history_pop(&t.ged.undo_hist, &t.ged.field, &t.ged.tick_num);
+          t.use_gui_cboard = false;
+          ged_input_cmd(&t.ged, Ged_input_cmd_paste);
+        } else {
+          if (pasted_h > 0 && pasted_w > 0) {
+            t.ged.ged_cursor.h = pasted_h;
+            t.ged.ged_cursor.w = pasted_w;
+          }
+        }
+        t.ged.needs_remarking = true;
+        t.ged.is_draw_dirty = true;
+      } else {
+        ged_input_cmd(&t.ged, Ged_input_cmd_paste);
+      }
+      break;
+    case '\'':
+      ged_input_cmd(&t.ged, Ged_input_cmd_toggle_selresize_mode);
+      break;
+    case '`':
+    case '~':
+      ged_input_cmd(&t.ged, Ged_input_cmd_toggle_slide_mode);
+      break;
+    case ' ':
+      if (t.ged.input_mode == Ged_input_mode_append)
+        ged_input_character(&t.ged, '.');
+      else
+        ged_input_cmd(&t.ged, Ged_input_cmd_toggle_play_pause);
+      break;
+    case 27: // Escape
+      mode = 'n';
+      // Check for escape sequences we're interested in that ncurses didn't
+      // handle. Such as bracketed paste.
+      if (brackpaste_seq_getungetch(stdscr) == Brackpaste_seq_begin) {
+        is_in_brackpaste = true;
+        undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
+        brackpaste_y = t.ged.ged_cursor.y;
+        brackpaste_x = t.ged.ged_cursor.x;
+        brackpaste_starting_x = brackpaste_x;
+        brackpaste_max_y = brackpaste_y;
+        brackpaste_max_x = brackpaste_x;
+        break;
+      }
+      ged_input_cmd(&t.ged, Ged_input_cmd_escape);
+      break;
+
+    case 330: // delete?
       ged_input_character(&t.ged, '.');
-    else
-      ged_input_cmd(&t.ged, Ged_input_cmd_toggle_play_pause);
-    break;
-  case 27: // Escape
-    // Check for escape sequences we're interested in that ncurses didn't
-    // handle. Such as bracketed paste.
-    if (brackpaste_seq_getungetch(stdscr) == Brackpaste_seq_begin) {
-      is_in_brackpaste = true;
-      undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
-      brackpaste_y = t.ged.ged_cursor.y;
-      brackpaste_x = t.ged.ged_cursor.x;
-      brackpaste_starting_x = brackpaste_x;
-      brackpaste_max_y = brackpaste_y;
-      brackpaste_max_x = brackpaste_x;
+      break;
+
+    // Cursor movement
+    case KEY_UP:
+    case CTRL_PLUS('k'):
+      ged_dir_input(&t.ged, Ged_dir_up, 1);
+      break;
+    case CTRL_PLUS('j'):
+    case KEY_DOWN:
+      ged_dir_input(&t.ged, Ged_dir_down, 1);
+      break;
+    case CTRL_PLUS('h'):
+    case KEY_LEFT:
+      ged_dir_input(&t.ged, Ged_dir_left, 1);
+      break;
+    case CTRL_PLUS('l'):
+    case KEY_RIGHT:
+      ged_dir_input(&t.ged, Ged_dir_right, 1);
+      break;
+
+    // Selection size modification. These may not work in all terminals. (Only
+    // tested in xterm so far.)
+    case 337: // shift-up
+      ged_modify_selection_size(&t.ged, -1, 0);
+      break;
+    case 336: // shift-down
+      ged_modify_selection_size(&t.ged, 1, 0);
+      break;
+    case 393: // shift-left
+      ged_modify_selection_size(&t.ged, 0, -1);
+      break;
+    case 402: // shift-right
+      ged_modify_selection_size(&t.ged, 0, 1);
+      break;
+    case 567: // shift-control-up
+      ged_modify_selection_size(&t.ged, -(int)t.ged.ruler_spacing_y, 0);
+      break;
+    case 526: // shift-control-down
+      ged_modify_selection_size(&t.ged, (int)t.ged.ruler_spacing_y, 0);
+      break;
+    case 546: // shift-control-left
+      ged_modify_selection_size(&t.ged, 0, -(int)t.ged.ruler_spacing_x);
+      break;
+    case 561: // shift-control-right
+      ged_modify_selection_size(&t.ged, 0, (int)t.ged.ruler_spacing_x);
+      break;
+
+    // Move cursor further if control is held
+    case 566: // control-up
+      ged_dir_input(&t.ged, Ged_dir_up, (int)t.ged.ruler_spacing_y);
+      break;
+    case 525: // control-down
+      ged_dir_input(&t.ged, Ged_dir_down, (int)t.ged.ruler_spacing_y);
+      break;
+    case 545: // control-left
+      ged_dir_input(&t.ged, Ged_dir_left, (int)t.ged.ruler_spacing_x);
+      break;
+    case 560: // control-right
+      ged_dir_input(&t.ged, Ged_dir_right, (int)t.ged.ruler_spacing_x);
+      break;
+
+    // Slide selection on alt-arrow
+    case 564: // alt-up
+      ged_slide_selection(&t.ged, -1, 0);
+      break;
+    case 523: // alt-down
+      ged_slide_selection(&t.ged, 1, 0);
+      break;
+    case 543: // alt-left
+      ged_slide_selection(&t.ged, 0, -1);
+      break;
+    case 558: // alt-right
+      ged_slide_selection(&t.ged, 0, 1);
+      break;
+
+    case CTRL_PLUS('d'):
+    case KEY_F(1):
+      push_main_menu();
+      break;
+    case '?':
+      push_controls_msg();
+      break;
+    case CTRL_PLUS('g'):
+      push_opers_guide_msg();
+      break;
+    case CTRL_PLUS('s'):
+      tui_try_save(&t);
+      break;
+
+    default:
+      if (key >= CHAR_MIN && key <= CHAR_MAX && orca_is_valid_glyph((Glyph)key))
+        ged_input_character(&t.ged, (char)key);
+#if 0
+        else
+          fprintf(stderr, "Unknown key number: %d\n", key);
+#endif
       break;
     }
-    ged_input_cmd(&t.ged, Ged_input_cmd_escape);
-    break;
+  } else if(mode == 'n'){ // normal mode
+    switch(key){
+      // Cursor movement
+      case 'k':
+        ged_dir_input(&t.ged, Ged_dir_up, 1);
+        break;
+      case 'j':
+        ged_dir_input(&t.ged, Ged_dir_down, 1);
+        break;
+      case 'h':
+        ged_dir_input(&t.ged, Ged_dir_left, 1);
+        break;
+      case 'l':
+        ged_dir_input(&t.ged, Ged_dir_right, 1);
+        break;
+      //Fast cursor movement
+      case 'K': //up
+        ged_dir_input(&t.ged, Ged_dir_up, (int)t.ged.ruler_spacing_y);
+        break;
+      case 'J': //down
+        ged_dir_input(&t.ged, Ged_dir_down, (int)t.ged.ruler_spacing_y);
+        break;
+      case 'b': //left
+      case 'H': //left
+        ged_dir_input(&t.ged, Ged_dir_left, (int)t.ged.ruler_spacing_x);
+        break;
+      case 'w': //right
+      case 'e': //right
+      case 'L': //right
+        ged_dir_input(&t.ged, Ged_dir_right, (int)t.ged.ruler_spacing_x);
+        break;
 
-  case 330: // delete?
-    ged_input_character(&t.ged, '.');
-    break;
+      // Mode change
+      case 'i':
+        mode = 'i';
+        break;
+      case 'v':
+        ged_input_cmd(&t.ged, Ged_input_cmd_toggle_selresize_mode);
+        break;
+      case 'r':
+        mode = 'i';
+        single_replace = true;
+        break;
+      case 'R':
+        mode = 'i';
+        ged_input_cmd(&t.ged, Ged_input_cmd_toggle_append_mode);
+        break;
+      case 27: // Escape
+        mode = 'n';
+        // Check for escape sequences we're interested in that ncurses didn't
+        // handle. Such as bracketed paste.
+        if (brackpaste_seq_getungetch(stdscr) == Brackpaste_seq_begin) {
+          is_in_brackpaste = true;
+          undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
+          brackpaste_y = t.ged.ged_cursor.y;
+          brackpaste_x = t.ged.ged_cursor.x;
+          brackpaste_starting_x = brackpaste_x;
+          brackpaste_max_y = brackpaste_y;
+          brackpaste_max_x = brackpaste_x;
+          break;
+        }
+        ged_input_cmd(&t.ged, Ged_input_cmd_escape);
+        break;
 
-  // Cursor movement
-  case KEY_UP:
-  case CTRL_PLUS('k'):
-    ged_dir_input(&t.ged, Ged_dir_up, 1);
-    break;
-  case CTRL_PLUS('j'):
-  case KEY_DOWN:
-    ged_dir_input(&t.ged, Ged_dir_down, 1);
-    break;
-  case CTRL_PLUS('h'):
-  case KEY_LEFT:
-    ged_dir_input(&t.ged, Ged_dir_left, 1);
-    break;
-  case CTRL_PLUS('l'):
-  case KEY_RIGHT:
-    ged_dir_input(&t.ged, Ged_dir_right, 1);
-    break;
+      // Edit
+      case 'x':
+      case 'd':
+        ged_input_cmd(&t.ged, Ged_input_cmd_cut);
+        try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
+        break;
+      case 'y':
+        ged_input_cmd(&t.ged, Ged_input_cmd_copy);
+        try_send_to_gui_clipboard(&t.ged, &t.use_gui_cboard);
+        break;
+      case 'p':
+        if (t.use_gui_cboard) {
+          bool added_hist =
+              undo_history_push(&t.ged.undo_hist, &t.ged.field, t.ged.tick_num);
+          Usz pasted_h, pasted_w;
+          Cboard_error cberr = cboard_paste(
+              t.ged.field.buffer, t.ged.field.height, t.ged.field.width,
+              t.ged.ged_cursor.y, t.ged.ged_cursor.x, &pasted_h, &pasted_w);
+          if (cberr) {
+            if (added_hist)
+              undo_history_pop(&t.ged.undo_hist, &t.ged.field, &t.ged.tick_num);
+            t.use_gui_cboard = false;
+            ged_input_cmd(&t.ged, Ged_input_cmd_paste);
+          } else {
+            if (pasted_h > 0 && pasted_w > 0) {
+              t.ged.ged_cursor.h = pasted_h;
+              t.ged.ged_cursor.w = pasted_w;
+            }
+          }
+          t.ged.needs_remarking = true;
+          t.ged.is_draw_dirty = true;
+        } else {
+          ged_input_cmd(&t.ged, Ged_input_cmd_paste);
+        }
+      break;
+      case 'u':
+        ged_input_cmd(&t.ged, Ged_input_cmd_undo);
+        break;
 
-  // Selection size modification. These may not work in all terminals. (Only
-  // tested in xterm so far.)
-  case 337: // shift-up
-    ged_modify_selection_size(&t.ged, -1, 0);
-    break;
-  case 336: // shift-down
-    ged_modify_selection_size(&t.ged, 1, 0);
-    break;
-  case 393: // shift-left
-    ged_modify_selection_size(&t.ged, 0, -1);
-    break;
-  case 402: // shift-right
-    ged_modify_selection_size(&t.ged, 0, 1);
-    break;
-  case 567: // shift-control-up
-    ged_modify_selection_size(&t.ged, -(int)t.ged.ruler_spacing_y, 0);
-    break;
-  case 526: // shift-control-down
-    ged_modify_selection_size(&t.ged, (int)t.ged.ruler_spacing_y, 0);
-    break;
-  case 546: // shift-control-left
-    ged_modify_selection_size(&t.ged, 0, -(int)t.ged.ruler_spacing_x);
-    break;
-  case 561: // shift-control-right
-    ged_modify_selection_size(&t.ged, 0, (int)t.ged.ruler_spacing_x);
-    break;
+      // Program controls
+      case ' ':
+        if (t.ged.input_mode == Ged_input_mode_append)
+          ged_input_character(&t.ged, '.');
+        else
+          ged_input_cmd(&t.ged, Ged_input_cmd_toggle_play_pause);
+        break;
+      case CTRL_PLUS('q'):
+        goto quit;
+      case CTRL_PLUS('o'):
+        push_open_form(osoc(t.file_name));
+        break;
+      //general contols
+      case CTRL_PLUS('d'):
+      case KEY_F(1):
+        push_main_menu();
+        break;
+      case '?':
+        push_controls_msg();
+        break;
+      case CTRL_PLUS('g'):
+        push_opers_guide_msg();
+        break;
+      case CTRL_PLUS('s'):
+        tui_try_save(&t);
+        break;
+      case CTRL_PLUS('f'):
+        ged_input_cmd(&t.ged, Ged_input_cmd_step_forward);
+        break;
+      case CTRL_PLUS('r'):
+        t.ged.tick_num = 0;
+        t.ged.needs_remarking = true;
+        t.ged.is_draw_dirty = true;
+        break;
+      case '<':
+        ged_adjust_bpm(&t.ged, -1);
+        break;
+      case '>':
+        ged_adjust_bpm(&t.ged, 1);
+        break;
 
-  // Move cursor further if control is held
-  case 566: // control-up
-    ged_dir_input(&t.ged, Ged_dir_up, (int)t.ged.ruler_spacing_y);
-    break;
-  case 525: // control-down
-    ged_dir_input(&t.ged, Ged_dir_down, (int)t.ged.ruler_spacing_y);
-    break;
-  case 545: // control-left
-    ged_dir_input(&t.ged, Ged_dir_left, (int)t.ged.ruler_spacing_x);
-    break;
-  case 560: // control-right
-    ged_dir_input(&t.ged, Ged_dir_right, (int)t.ged.ruler_spacing_x);
-    break;
-
-  // Slide selection on alt-arrow
-  case 564: // alt-up
-    ged_slide_selection(&t.ged, -1, 0);
-    break;
-  case 523: // alt-down
-    ged_slide_selection(&t.ged, 1, 0);
-    break;
-  case 543: // alt-left
-    ged_slide_selection(&t.ged, 0, -1);
-    break;
-  case 558: // alt-right
-    ged_slide_selection(&t.ged, 0, 1);
-    break;
-
-  case CTRL_PLUS('d'):
-  case KEY_F(1):
-    push_main_menu();
-    break;
-  case '?':
-    push_controls_msg();
-    break;
-  case CTRL_PLUS('g'):
-    push_opers_guide_msg();
-    break;
-  case CTRL_PLUS('s'):
-    tui_try_save(&t);
-    break;
-
-  default:
-    if (key >= CHAR_MIN && key <= CHAR_MAX && orca_is_valid_glyph((Glyph)key))
-      ged_input_character(&t.ged, (char)key);
-#if 0
-      else
-        fprintf(stderr, "Unknown key number: %d\n", key);
-#endif
-    break;
+      //orca modes
+      case '`':
+      case '~':
+        ged_input_cmd(&t.ged, Ged_input_cmd_toggle_slide_mode);
+        break;
+    }
   }
   goto event_loop;
 quit:
@@ -3870,3 +4096,4 @@ quit:
 
 #undef TOUCHFLAG
 #undef staticni
+

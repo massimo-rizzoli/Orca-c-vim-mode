@@ -1,3 +1,44 @@
+# ORCΛ Vim Mode
+
+My first thought when I tried out ORCΛ was something like: "Wow! This is such an interesting way to code... but wouldn't it be nice if the editor had a vim mode?".
+
+This small contribution is mostly in the form of a remap of the controls of [Orca-c](https://github.com/hundredrabbits/Orca-c), while keeping everything else the same.
+The controls for the vim mode follow, together with all the information of the original project.
+
+
+### `orca` Livecoding Environment Controls: Vim Mode
+
+```
+┌ Controls ───────────────────────────────────────────────────────────────────────────────┐
+│         Ctrl+Q  Quit                                                                    │
+│        h j k l  Move Cursor                                                             │
+│        H J K L  Move Cursor One Block                                                   │
+│         w or e  Move Cursor Forward Horizontally One Block                              │
+│              b  Move Cursor Bckwards Horizontally One Block                             │
+│   Ctrl+D or F1  Open Main Menu                                                          │
+│              i  Enter Insert Mode                                                       │
+│              v  Enter Visual Mode (Rectangle Selection Mode/Adjust Rectangle Selection) │
+│              R  Enter Replace Mode (Append/Overwrite Mode)                              │
+│              r  Replace Single                                                          │
+│       Spacebar  Play/Pause                                                              │
+│              u  Undo                                                                    │
+│         d or x  Cut                                                                     │
+│              y  Copy                                                                    │
+│              p  Paste                                                                   │
+│         Ctrl+S  Save                                                                    │
+│         Ctrl+F  Frame Step Forward                                                      │
+│         Ctrl+R  Reset Frame Number                                                      │
+│ ` (grave) or ~  Slide Selection Mode                                                    │
+│         Escape  Return to Normal Mode or Deselect                                       │
+│        < and >  Adjust BPM                                                              │
+│              ?  Controls (this message)                                                 │
+└─────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The available vim controls are very basic, but a lot more familiar if vim is your editor of choice. While in insert mode, the original controls will be available instead.
+
+
+
 # ORCΛ
 
 Orca is an [esoteric programming language](https://en.wikipedia.org/wiki/Esoteric_programming_language) and live editor designed to quickly create procedural sequencers. Every letter of the alphabet is an operation, lowercase letters execute on `*bang*`, and uppercase letters execute each frame.
@@ -131,7 +172,7 @@ $ ./tool build --portmidi orca           # compile orca using build script
 $ build/orca                             # run orca
 ```
 
-### `orca` Livecoding Environment Controls
+### `orca` Livecoding Environment Controls: Original Controls (Available In Insert Mode)
 
 ```
 ┌ Controls ───────────────────────────────────────────┐
